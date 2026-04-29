@@ -1,95 +1,47 @@
-AgenticAI_Project_<GroupName>/
-│
-├── README.md
-├── requirements.txt
-├── .env
-├── .gitignore
-│
-├── docs/
-├── data/
-│   ├── outputs/
-│   ├── temp/
-│   └── state_versions/
-│
-├── shared/
-│   ├── schemas/
-│   ├── utils/
-│   └── constants/
-│
-├── mcp/                              # 🧩 MCP Layer (Tool Abstraction)
-│   ├── base_tool.py                  # Base Tool Interface
-│   ├── tool_registry.py              # Register & discover tools
-│   ├── tool_executor.py              # Executes tools dynamically
-│   │
-│   ├── tools/                        # 🔧 Actual Tools
-│   │   ├── llm_tools/
-│   │   │   ├── text_generator.py
-│   │   │   └── json_structurer.py
-│   │   │
-│   │   ├── audio_tools/
-│   │   │   ├── tts_tool.py
-│   │   │   ├── bgm_tool.py
-│   │   │   └── audio_merger.py
-│   │   │
-│   │   ├── vision_tools/
-│   │   │   ├── image_gen_tool.py
-│   │   │   ├── image_edit_tool.py
-│   │   │   └── style_transfer.py
-│   │   │
-│   │   ├── video_tools/
-│   │   │   ├── ffmpeg_tool.py
-│   │   │   ├── compositor_tool.py
-│   │   │   └── subtitle_tool.py
-│   │   │
-│   │   └── system_tools/
-│   │       ├── file_tool.py
-│   │       ├── state_tool.py
-│   │       └── logger_tool.py
-│
-├── agents/                           # 🤖 Agents use MCP tools
-│   ├── orchestrator/
-│   │   ├── graph.py
-│   │   ├── workflow.py
-│   │   └── state.py
-│   │
-│   ├── story_agent/                  # Phase 1
-│   │   ├── agent.py                  # Uses LLM tools
-│   │   ├── planner.py
-│   │   └── tests/
-│   │
-│   ├── audio_agent/                  # Phase 2
-│   │   ├── agent.py                  # Uses TTS + BGM tools
-│   │   └── tests/
-│   │
-│   ├── video_agent/                  # Phase 3
-│   │   ├── agent.py                  # Uses vision + video tools
-│   │   └── tests/
-│   │
-│   └── edit_agent/                   # Phase 5 ⭐
-│       ├── agent.py
-│       ├── intent_classifier.py
-│       ├── planner.py
-│       ├── executor.py               # Calls MCP tools
-│       └── tests/
-│
-├── backend/
-│   ├── app.py
-│   ├── routes/
-│   ├── services/
-│   └── websocket/
-│
-├── frontend/
-│   ├── src/
-│   └── package.json
-│
-├── state_manager/
-│   ├── state_manager.py
-│   ├── snapshot.py
-│   ├── history.py
-│   └── storage.py
-│
-├── tests/
-│   ├── unit/
-│   └── integration/
-│
-└── scripts/
+# AgenticAI Project (GroupName)
+
+A modular agent framework that organizes tools (MCP), agents, backend, and frontend code.
+
+## Quick Start
+
+Prerequisites:
+
+- Python 3.9+ (or project virtual environment)
+- Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Basic run (example):
+
+```bash
+python -m backend.app
+```
+
+Adjust commands depending on which agent or script you want to run (see `scripts/`).
+
+## Repository Layout
+
+- `agents/` — agent implementations and tests (story, audio, video, edit)
+- `mcp/` — modular tools and tool-execution layer (llm, audio, vision, video, system)
+- `backend/` — web backend, API routes, and websocket handlers
+- `frontend/` — web UI source and `package.json`
+- `data/` — outputs, temporary files, and state versions
+- `shared/` — shared schemas, utilities, and constants
+- `state_manager/` — state persistence, snapshots, and history
+- `tests/` — unit and integration tests
+- `scripts/` — convenience scripts to run phases or workflows
+
+## Contributing
+
+- Follow existing code style in each package.
+- Add tests under the matching `tests/` folders.
+
+## Contact
+
+For questions or issues, open an issue or contact the maintainers.
+
+---
+
+This README replaces the previous plain tree dump with a concise project overview and usage hints.

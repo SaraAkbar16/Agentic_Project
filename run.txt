@@ -1,7 +1,9 @@
 A fantasy story about a young mage saving her village
 a scientist exploring a potion that convert human into animals
 
+phase1 
 python scripts/run_phase1_cli.py
 $input = "a man enjoying his latte in a coffee shop"; $input | python scripts/run_phase1_cli.py
 
+phase2
 python scripts/run_phase2_cli.py data/outputs/phase1_state_20260428_191627.json
