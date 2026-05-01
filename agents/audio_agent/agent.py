@@ -105,6 +105,8 @@ def _generate_dialogue_audio_lines(
                 raise ValueError("Every dialogue must have a character_id")
             if dlg["character_id"] not in characters:
                 raise ValueError(f"Unknown character_id referenced: {dlg['character_id']}")
+            # Add scene_id to dialogue for tracking
+            dlg["scene_id"] = scene.get("scene_id", "unknown_scene")
             flat_dialogues.append(dlg)
 
     dialogue_dir = os.path.join(output_dir, "audio", "phase2", "dialogue")
@@ -126,14 +128,18 @@ def _generate_dialogue_audio_lines(
         # try TTS first; if not available, write silent WAV with deterministic length
         duration_ms = _try_tts_save(text, filepath)
         if duration_ms == 0:
+            print(f" [AudioAgent] TTS failed for line {line_id}, falling back to silent WAV.")
             duration_ms = _duration_ms_from_text(text)
             _write_silent_wav(filepath, duration_ms)
+        else:
+            print(f"[AudioAgent] Generated audio for line {line_id} ({duration_ms}ms)")
 
         end_ms = start_ms + duration_ms
 
         dialogue_tracks.append(
             {
                 "line_id": line_id,
+                "scene_id": dlg["scene_id"],
                 "character_id": character_id,
                 "audio_file": relpath,
                 "start_ms": int(start_ms),
@@ -184,6 +190,21 @@ def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
         }
     )
     phase2["versions"] = versions
+
+    # Save timing manifest separately as required
+    timing_manifest = []
+    for track in dialogue_tracks:
+        timing_manifest.append({
+            "scene_id": track["scene_id"],
+            "audio_file": track["audio_file"],
+            "start_ms": track["start_ms"],
+            "end_ms": track["end_ms"]
+        })
+    
+    manifest_path = os.path.join(parent, "timing_manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
+    print(f"[AudioAgent] Timing manifest saved to: {manifest_path}")
 
     return phase2
 
