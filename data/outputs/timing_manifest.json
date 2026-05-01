@@ -3,36 +3,36 @@
     "scene_id": "scene_01",
     "audio_file": "audio/phase2/dialogue/line_01.wav",
     "start_ms": 0,
-    "end_ms": 3934
+    "end_ms": 4058
   },
   {
     "scene_id": "scene_01",
     "audio_file": "audio/phase2/dialogue/line_02.wav",
-    "start_ms": 3934,
-    "end_ms": 9642
+    "start_ms": 4058,
+    "end_ms": 8745
   },
   {
     "scene_id": "scene_02",
     "audio_file": "audio/phase2/dialogue/line_03.wav",
-    "start_ms": 9642,
-    "end_ms": 13353
+    "start_ms": 8745,
+    "end_ms": 10689
   },
   {
     "scene_id": "scene_02",
     "audio_file": "audio/phase2/dialogue/line_04.wav",
-    "start_ms": 13353,
-    "end_ms": 17706
+    "start_ms": 10689,
+    "end_ms": 15596
   },
   {
     "scene_id": "scene_03",
     "audio_file": "audio/phase2/dialogue/line_05.wav",
-    "start_ms": 17706,
-    "end_ms": 22984
+    "start_ms": 15596,
+    "end_ms": 20180
   },
   {
     "scene_id": "scene_03",
     "audio_file": "audio/phase2/dialogue/line_06.wav",
-    "start_ms": 22984,
-    "end_ms": 27857
+    "start_ms": 20180,
+    "end_ms": 24518
   }
 ]

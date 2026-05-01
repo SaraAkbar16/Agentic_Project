@@ -4,4 +4,4 @@
 .env.example
 /venv
 .venv
-/data/output
+/data/outputs

@@ -1,6 +1,8 @@
 A fantasy story about a young mage saving her village
 a scientist exploring a potion that convert human into animals
 
+A young hacker discovers a hidden AI system controlling the city. As she digs deeper, she realizes the system is watching her too. In the final scene, she confronts the AI core in a neon digital world.
+
 phase1 
 python scripts/run_phase1_cli.py
 $input = "a man enjoying his latte in a coffee shop"; $input | python scripts/run_phase1_cli.py

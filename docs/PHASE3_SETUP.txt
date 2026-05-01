@@ -1,0 +1,77 @@
+==================================================
+PHASE 3: VIDEO GENERATION & COMPOSITION SETUP
+==================================================
+
+This document outlines the dependencies and configuration required for the
+Agentic Video Generation Pipeline.
+
+1. AI PROVIDERS (PHASE 1 & 2)
+-----------------------------
+The system supports multiple LLM and Audio providers.
+
+A. Ollama (Local)
+   - Install Ollama from https://ollama.ai/
+   - Pull required models (e.g., llama3, mistral):
+     > ollama pull llama3
+   - Ensure Ollama is running before starting the pipeline.
+
+B. Groq (API)
+   - Obtain an API key from https://console.groq.com/
+   - Set GROQ_API_KEY in your .env file.
+
+2. IMAGE GENERATION (COMFYUI)
+-----------------------------
+The pipeline uses ComfyUI via its API.
+
+- Install ComfyUI: https://github.com/comfyanonymous/ComfyUI
+- Ensure the 'Wan2.1' or 'SDXL' workflows are loaded.
+- Required Node IDs must be set in .env:
+  COMFY_URL=http://127.0.0.1:8188
+  COMFY_PROMPT_NODE_ID=23
+  COMFY_NEGATIVE_PROMPT_NODE_ID=11
+
+3. VIDEO RENDERING (FFMPEG)
+---------------------------
+FFmpeg is critical for Ken Burns effects, audio mixing, and subtitles.
+
+- DOWNLOAD: https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-essentials.7z
+- INSTALL: Extract to a stable folder (e.g., C:\ffmpeg).
+- CONFIG: Set the absolute path in .env:
+  FFMPEG_PATH=C:\\ffmpeg\\bin\\ffmpeg.exe
+
+4. LIP-SYNCING (WAV2LIP)
+------------------------
+Used for character-driven scenes.
+
+- REPOSITORY: https://github.com/Rudrabha/Wav2Lip
+- CHECKPOINTS: Place wav2lip_gan.pth in the 'checkpoints' folder.
+- DEPENDENCIES: 
+  > pip install tqdm opencv-python librosa
+- CONFIG:
+  WAV2LIP_PATH=C:\\path\\to\\Wav2Lip
+  WAV2LIP_PYTHON=python (or path to specific venv python)
+
+5. WEB INTERFACE (PHASE 4)
+--------------------------
+The upcoming web interface will use Vite/Next.js.
+
+- Ensure Node.js (v18+) is installed.
+- Run 'npm install' in the project root once Phase 4 is initialized.
+
+6. ENVIRONMENT CONFIGURATION
+----------------------------
+Ensure your .env file is fully populated:
+
+# API Keys
+GROQ_API_KEY=your_key_here
+
+# Tool Paths
+FFMPEG_PATH=C:\\Development\\aa-project-2026\\tools\\ffmpeg-8.1-essentials_build\\bin\\ffmpeg.exe
+WAV2LIP_PATH=C:\\Development\\aa-project-2026\\tools\\wave2lip\\Wav2Lip
+WAV2LIP_PYTHON=python
+
+# ComfyUI
+COMFY_URL=http://127.0.0.1:8188
+COMFY_PROMPT_NODE_ID=23
+COMFY_NEGATIVE_PROMPT_NODE_ID=11
+==================================================

@@ -1,0 +1,153 @@
+{
+  "2": {
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "4": {
+    "inputs": {
+      "anything": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "Clean VRAM Used"
+    }
+  },
+  "11": {
+    "inputs": {
+      "text": "poorly drawn, bad anatomy, bad hands, bad eyes, missing fingers, extra fingers, ugly, deformed, disfigured, blurry, grainy, out of focus, low resolution, amateur, poorly lit, oversaturated, undersaturated, watermark, signature, text, writing, noise, artifacts",
+      "clip": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "12": {
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "length": 1,
+      "batch_size": 1
+    },
+    "class_type": "EmptyHunyuanLatentVideo",
+    "_meta": {
+      "title": "Empty HunyuanVideo 1.0 Latent"
+    }
+  },
+  "13": {
+    "inputs": {
+      "seed": 295379049212875,
+      "steps": 10,
+      "cfg": 5,
+      "sampler_name": "euler",
+      "scheduler": "beta",
+      "denoise": 1,
+      "model": [
+        "38",
+        0
+      ],
+      "positive": [
+        "23",
+        0
+      ],
+      "negative": [
+        "11",
+        0
+      ],
+      "latent_image": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "14": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "15": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "29",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "23": {
+    "inputs": {
+      "text": "A cinematic retro-style scene set in the 1980s, featuring a lone person standing on a quiet neon-lit street at night. The atmosphere is moody and nostalgic, with soft film grain, slight VHS distortion, and analog camera artifacts. The person is wearing vintage clothing (denim jacket, high-waisted pants) and looking thoughtfully into the distance. Neon signs glow in pink, blue, and purple hues, reflecting on wet pavement. Slow cinematic camera movement, subtle zoom-in, shallow depth of field, soft lighting, and dreamy bokeh. Highly detailed, realistic lighting, retro film aesthetic, 35mm film look, color-graded like an old movie, emotional and atmospheric tone.",
+      "clip": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "29": {
+    "inputs": {
+      "anything": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "easy clearCacheAll",
+    "_meta": {
+      "title": "Clear Cache All"
+    }
+  },
+  "37": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "38": {
+    "inputs": {
+      "unet_name": "wan2.1_t2v_1.3B_fp16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  }
+}
