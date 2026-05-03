@@ -122,18 +122,34 @@ def _try_tts_save(text: str, path: str, gender: str = "male") -> int:
 def _generate_dialogue_audio_lines(
     phase1: Dict[str, Any],
     output_dir: str,
-    project_id: str
+    project_id: str,
+    force: bool = False
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Generate audio files for each dialogue line in project-specific folders."""
     
-    # Map character IDs to genders based on descriptions
+    # Map character IDs to genders based on structured voice_profile
     char_metadata = {}
+    female_keywords = ["female", "woman", "girl", "lady", "queen", "princess", "she", "her", "hers", "mrs", "ms", "miss"]
+    
     for c in phase1.get("characters", []):
-        desc = c.get("visual_description", "").lower()
-        gender = "male"
-        if any(kw in desc for kw in ["female", "woman", "girl", "lady", "queen", "princess"]):
-            gender = "female"
-        char_metadata[c["character_id"]] = {"gender": gender}
+        char_id = c.get("character_id")
+        
+        # 1. Try structured voice_profile gender first
+        gender = c.get("voice_profile", {}).get("gender")
+        
+        # 2. Fallback to keyword scanning
+        if not gender:
+            name = c.get("name", "").lower()
+            v_desc = c.get("visual_profile", {}).get("appearance", "").lower() # Note: structured visual_profile
+            desc = c.get("personality", "").lower()
+            
+            full_text = f"{name} {v_desc} {desc}"
+            gender = "female" if any(kw in full_text for kw in female_keywords) else "male"
+        else:
+            gender = gender.lower()
+            
+        char_metadata[char_id] = {"gender": gender, "name": c.get("name", char_id)}
+        print(f" [AudioAgent] Character '{char_metadata[char_id]['name']}' ({char_id}) detected as: {gender.upper()}")
 
     # Gather dialogues in scene order
     scenes = sorted(phase1.get("scenes", []), key=lambda s: s.get("order", 0))
@@ -163,14 +179,16 @@ def _generate_dialogue_audio_lines(
         relpath = os.path.join("audio", "phase2", project_id, "dialogue", filename).replace("\\", "/")
 
         # Check if already exists (Simple cache)
-        if os.path.exists(filepath):
+        if os.path.exists(filepath) and not force:
             try:
                 with wave.open(filepath, "rb") as wf:
                     duration_ms = int((wf.getnframes() / float(wf.getframerate())) * 1000)
-                    print(f" [AudioAgent] Using cached audio for {line_id}")
+                    print(f" [AudioAgent] Using cached {gender} audio for {line_id}")
             except:
                 duration_ms = 0
         else:
+            if force and os.path.exists(filepath):
+                print(f" [AudioAgent] Forcing re-generation for {line_id}...")
             duration_ms = _try_tts_save(text, filepath, gender=gender)
 
         if duration_ms == 0:
@@ -230,7 +248,7 @@ def _get_bgm_for_mood(mood: str, assets_dir: str) -> str | None:
     return os.path.join("assets", "music", available_files[0]).replace("\\", "/")
 
 
-def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
+def run_phase2_on_file(phase1_path: str, force: bool = False) -> Dict[str, Any]:
     """Process a Phase-1 JSON file and emit Phase-2 augmented JSON."""
     phase1_path = os.path.abspath(phase1_path)
     parent = os.path.dirname(phase1_path)
@@ -245,7 +263,7 @@ def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
     project_id = _get_project_id(phase1)
     
     # 2. Generate dialogue audio
-    dialogue_tracks, generated_files = _generate_dialogue_audio_lines(phase1, parent, project_id)
+    dialogue_tracks, generated_files = _generate_dialogue_audio_lines(phase1, parent, project_id, force=force)
 
     # 3. Build timing manifest with BGM
     timing_manifest = []

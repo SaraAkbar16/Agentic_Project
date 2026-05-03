@@ -75,3 +75,16 @@ COMFY_URL=http://127.0.0.1:8188
 COMFY_PROMPT_NODE_ID=23
 COMFY_NEGATIVE_PROMPT_NODE_ID=11
 ==================================================
+
+
+Audio Controls:
+"Change voice tone" or "Make the voice energetic" → The agent updates the character metadata and re-runs the TTS synthesis.
+"Add background music" or "Change the music mood" → It re-maps the music in Phase 2 and re-mixes the video.
+Visual Direction:
+"Make the scene darker" or "Add a cinematic look" → It modifies the visual prompts and forces ComfyUI to regenerate the frames.
+"Change character design" → It updates the character's persona and re-generates every scene where that character appears.
+Post-Production:
+"Remove subtitles" → It re-composes the video without the burn-in effect.
+"Speed up this scene" → it identifies the speed factor and prepares the timing adjustment.
+Structural Changes:
+"Regenerate the script" → It triggers a full Phase 1 re-run to give you a fresh story from the same concept.

@@ -37,20 +37,21 @@ def _output_filename_for(input_path: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv or sys.argv[1:]
-    if not argv or len(argv) != 1:
-        print("Usage: python scripts/run_phase2_cli.py <phase1_json_path>")
-        return 2
+    import argparse
+    parser = argparse.ArgumentParser(description="Phase 2: Audio Generation CLI")
+    parser.add_argument("phase1_path", help="Path to the Phase 1 state JSON file")
+    parser.add_argument("--force", action="store_true", help="Force regeneration of all audio files")
+    
+    args = parser.parse_args(argv)
 
-    phase1_path = argv[0]
-    if not os.path.isfile(phase1_path):
-        print(f"Error: file not found: {phase1_path}")
+    if not os.path.isfile(args.phase1_path):
+        print(f"Error: file not found: {args.phase1_path}")
         return 3
 
     # Run Phase 2
-    phase2 = run_phase2_on_file(phase1_path)
+    phase2 = run_phase2_on_file(args.phase1_path, force=args.force)
 
-    outpath = _output_filename_for(phase1_path)
+    outpath = _output_filename_for(args.phase1_path)
     with open(outpath, "w", encoding="utf-8") as fh:
         json.dump(phase2, fh, indent=2, ensure_ascii=False)
 
