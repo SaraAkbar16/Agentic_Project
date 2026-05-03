@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+python-multipart
+python-dotenv
+requests
+tqdm
+pyttsx3
+opencv-python
+pillow

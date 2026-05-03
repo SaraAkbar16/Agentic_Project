@@ -252,9 +252,9 @@ def run_phase2_on_file(phase1_path: str, force: bool = False) -> Dict[str, Any]:
     """Process a Phase-1 JSON file and emit Phase-2 augmented JSON."""
     phase1_path = os.path.abspath(phase1_path)
     parent = os.path.dirname(phase1_path)
-    # The root of the project is one level up from parent (if parent is data/outputs)
-    # Actually, let's use the current CWD or find it.
-    root_dir = os.getcwd()
+    
+    # Correctly identify project root (two levels up from agents/audio_agent/agent.py)
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     with open(phase1_path, "r", encoding="utf-8") as fh:
         phase1 = json.load(fh)
