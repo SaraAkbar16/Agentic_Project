@@ -81,35 +81,70 @@ def _try_tts_save(text: str, path: str) -> int:
         return 0
 
 
+def _get_project_id(phase1: Dict[str, Any]) -> str:
+    """Extract project_id from meta or generate one."""
+    return phase1.get("meta", {}).get("project_id", "project_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
+
+
+def _try_tts_save(text: str, path: str, gender: str = "male") -> int:
+    """Attempt to use pyttsx3 to save speech to `path` with gender-appropriate voice."""
+    try:
+        import pyttsx3
+
+        engine = pyttsx3.init()
+        voices = engine.getProperty("voices")
+        
+        # Simple gender mapping
+        # 0 is usually male, 1 is usually female in default Windows/SAPI5
+        if gender == "female" and len(voices) > 1:
+            engine.setProperty("voice", voices[1].id)
+        else:
+            engine.setProperty("voice", voices[0].id)
+
+        # ensure folder exists before saving
+        dirname = os.path.dirname(path)
+        _ensure_dir(dirname)
+        engine.save_to_file(text or "", path)
+        engine.runAndWait()
+
+        # measure duration
+        try:
+            with wave.open(path, "rb") as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                return int((frames / float(rate)) * 1000)
+        except Exception:
+            return 0
+    except Exception:
+        return 0
+
+
 def _generate_dialogue_audio_lines(
     phase1: Dict[str, Any],
     output_dir: str,
+    project_id: str
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Generate audio files for each dialogue line and return dialogue_tracks.
+    """Generate audio files for each dialogue line in project-specific folders."""
+    
+    # Map character IDs to genders based on descriptions
+    char_metadata = {}
+    for c in phase1.get("characters", []):
+        desc = c.get("visual_description", "").lower()
+        gender = "male"
+        if any(kw in desc for kw in ["female", "woman", "girl", "lady", "queen", "princess"]):
+            gender = "female"
+        char_metadata[c["character_id"]] = {"gender": gender}
 
-    Returns (dialogue_tracks, generated_files)
-    """
-    characters = {c["character_id"] for c in phase1.get("characters", [])}
-    if not characters:
-        raise ValueError("Phase-1 JSON must contain at least one character")
-
-    # gather dialogues in scene order
+    # Gather dialogues in scene order
     scenes = sorted(phase1.get("scenes", []), key=lambda s: s.get("order", 0))
-    # validate and flatten dialogues
     flat_dialogues: List[Dict[str, Any]] = []
     for scene in scenes:
         for dlg in scene.get("dialogues", []):
-            if "line_id" not in dlg:
-                raise ValueError("Every dialogue must have a line_id")
-            if "character_id" not in dlg:
-                raise ValueError("Every dialogue must have a character_id")
-            if dlg["character_id"] not in characters:
-                raise ValueError(f"Unknown character_id referenced: {dlg['character_id']}")
-            # Add scene_id to dialogue for tracking
             dlg["scene_id"] = scene.get("scene_id", "unknown_scene")
             flat_dialogues.append(dlg)
 
-    dialogue_dir = os.path.join(output_dir, "audio", "phase2", "dialogue")
+    # Isolated project directory
+    dialogue_dir = os.path.join(output_dir, "audio", "phase2", project_id, "dialogue")
     _ensure_dir(dialogue_dir)
 
     dialogue_tracks: List[Dict[str, Any]] = []
@@ -118,34 +153,41 @@ def _generate_dialogue_audio_lines(
 
     for dlg in flat_dialogues:
         line_id = dlg["line_id"]
-        character_id = dlg["character_id"]
+        char_id = dlg["character_id"]
         text = dlg.get("text", "")
+        gender = char_metadata.get(char_id, {}).get("gender", "male")
 
         filename = f"{line_id}.wav"
         filepath = os.path.join(dialogue_dir, filename)
-        relpath = os.path.join("audio", "phase2", "dialogue", filename).replace("\\", "/")
+        # Relative path for the manifest
+        relpath = os.path.join("audio", "phase2", project_id, "dialogue", filename).replace("\\", "/")
 
-        # try TTS first; if not available, write silent WAV with deterministic length
-        duration_ms = _try_tts_save(text, filepath)
+        # Check if already exists (Simple cache)
+        if os.path.exists(filepath):
+            try:
+                with wave.open(filepath, "rb") as wf:
+                    duration_ms = int((wf.getnframes() / float(wf.getframerate())) * 1000)
+                    print(f" [AudioAgent] Using cached audio for {line_id}")
+            except:
+                duration_ms = 0
+        else:
+            duration_ms = _try_tts_save(text, filepath, gender=gender)
+
         if duration_ms == 0:
-            print(f" [AudioAgent] TTS failed for line {line_id}, falling back to silent WAV.")
             duration_ms = _duration_ms_from_text(text)
             _write_silent_wav(filepath, duration_ms)
         else:
-            print(f"[AudioAgent] Generated audio for line {line_id} ({duration_ms}ms)")
+            print(f"[AudioAgent] Generated {gender} audio for {line_id} ({duration_ms}ms)")
 
         end_ms = start_ms + duration_ms
-
-        dialogue_tracks.append(
-            {
-                "line_id": line_id,
-                "scene_id": dlg["scene_id"],
-                "character_id": character_id,
-                "audio_file": relpath,
-                "start_ms": int(start_ms),
-                "end_ms": int(end_ms),
-            }
-        )
+        dialogue_tracks.append({
+            "line_id": line_id,
+            "scene_id": dlg["scene_id"],
+            "character_id": char_id,
+            "audio_file": relpath,
+            "start_ms": int(start_ms),
+            "end_ms": int(end_ms),
+        })
         generated_files.append(filepath)
         start_ms = end_ms
 
@@ -153,19 +195,18 @@ def _generate_dialogue_audio_lines(
 
 
 def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
-    """Process a Phase-1 JSON file and emit Phase-2 augmented JSON.
-
-    This function strictly operates only on the provided file and writes all
-    outputs into the same directory as the input file.
-    """
+    """Process a Phase-1 JSON file and emit Phase-2 augmented JSON."""
     phase1_path = os.path.abspath(phase1_path)
     parent = os.path.dirname(phase1_path)
 
     with open(phase1_path, "r", encoding="utf-8") as fh:
         phase1 = json.load(fh)
 
+    # 1. Identity
+    project_id = _get_project_id(phase1)
+    
     # generate dialogue audio and timings
-    dialogue_tracks, generated_files = _generate_dialogue_audio_lines(phase1, parent)
+    dialogue_tracks, generated_files = _generate_dialogue_audio_lines(phase1, parent, project_id)
 
     # build audio block
     audio_block = {"dialogue_tracks": dialogue_tracks, "background_music": []}
@@ -176,19 +217,18 @@ def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
 
     # update meta
     meta = dict(phase2.get("meta", {}))
+    meta["project_id"] = project_id
     meta["current_version"] = 2
     meta["last_updated"] = _iso_now()
     phase2["meta"] = meta
 
     # versions list
     versions = phase2.get("versions") or []
-    versions.append(
-        {
-            "version": 2,
-            "change_summary": "Generated dialogue audio",
-            "changed_by": "phase_2_audio_agent",
-        }
-    )
+    versions.append({
+        "version": 2,
+        "change_summary": f"Generated dialogue audio for {project_id}",
+        "changed_by": "phase_2_audio_agent",
+    })
     phase2["versions"] = versions
 
     # Save timing manifest separately as required
@@ -201,9 +241,17 @@ def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
             "end_ms": track["end_ms"]
         })
     
-    manifest_path = os.path.join(parent, "timing_manifest.json")
+    # Save manifest inside the project's audio dir for easier reference
+    manifest_path = os.path.join(parent, "audio", "phase2", project_id, "timing_manifest.json")
+    _ensure_dir(os.path.dirname(manifest_path))
     with open(manifest_path, "w", encoding="utf-8") as fh:
         json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
+    
+    # Also save one in the main output dir for Phase 3's default behavior
+    main_manifest_path = os.path.join(parent, "timing_manifest.json")
+    with open(main_manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
+        
     print(f"[AudioAgent] Timing manifest saved to: {manifest_path}")
 
     return phase2

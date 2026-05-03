@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--subtitles", action="store_true", help="Enable subtitle burning")
     parser.add_argument("--force", action="store_true", help="Force regeneration of frames (skip cache)")
     parser.add_argument("--comfy-url", type=str, help="ComfyUI URL (defaults to COMFY_URL env var)")
+    parser.add_argument("--project-id", type=str, help="Project ID for resuming or overriding")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
     args = parser.parse_args()
@@ -43,6 +44,7 @@ def main():
         "subtitles": args.subtitles,
         "force": args.force,
         "comfy_url": args.comfy_url,
+        "project_id": args.project_id,
     }
 
     try:

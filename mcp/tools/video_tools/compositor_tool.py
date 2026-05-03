@@ -14,16 +14,38 @@ from mcp.tools.video_tools import ffmpeg_tool
 logger = logging.getLogger("phase3.compositor")
 
 
-def get_animation_effect(tone: str) -> str:
-    """Map scene tone to a Ken Burns animation effect."""
-    tone = tone.lower()
-    if any(t in tone for t in ["action", "tense", "exciting"]):
+def get_animation_effect(scene: Dict[str, Any]) -> str:
+    """Smarter mapping of scene content to a Ken Burns animation effect."""
+    tone = (scene.get("mood") or scene.get("tone") or "").lower()
+    visual = (scene.get("visual_description") or "").lower()
+    
+    # 1. Check for movement keywords in visual description
+    if any(kw in visual for kw in ["approaching", "walking", "running", "moving", "coming towards"]):
         return "zoom_in"
-    if any(t in tone for t in ["melancholic", "reflective", "sad", "calm"]):
+    if any(kw in visual for kw in ["landscape", "panorama", "wide shot", "forest", "city", "view"]):
         return "pan_left"
-    if any(t in tone for t in ["hopeful", "uplifting", "happy"]):
+    if any(kw in visual for kw in ["discovering", "looking away", "leaving", "shrinking"]):
         return "zoom_out"
-    return "static"
+
+    # 2. Map Tone/Mood
+    if any(t in tone for t in ["action", "tense", "exciting", "surprised", "scared", "intense"]):
+        return "zoom_in"
+    if any(t in tone for t in ["melancholic", "reflective", "sad", "calm", "serious", "thoughtful", "mysterious"]):
+        return "pan_left"
+    if any(t in tone for t in ["hopeful", "uplifting", "happy", "curious", "wonder"]):
+        return "zoom_out"
+    if any(t in tone for t in ["doubtful", "uncertain", "confused"]):
+        return "pan_right"
+
+    # 3. Default to a rotating set of effects instead of static
+    # Use the scene_id to pick a deterministic but varying effect
+    scene_id = str(scene.get("scene_id", "0"))
+    effects = ["zoom_in", "pan_left", "zoom_out", "pan_right"]
+    try:
+        idx = int(scene_id.split("_")[-1]) % len(effects)
+    except:
+        idx = 0
+    return effects[idx]
 
 
 def compose_scene(
@@ -43,8 +65,7 @@ def compose_scene(
     3. Merge audio (dialogue + BGM).
     """
     scene_id = scene["scene_id"]
-    tone = scene.get("mood") or scene.get("tone") or "default"
-    effect = get_animation_effect(tone)
+    effect = get_animation_effect(scene)
     duration_ms = timing_manifest_scene["total_duration_ms"]
     duration_sec = duration_ms / 1000.0
     

@@ -138,14 +138,14 @@ def merge_audio_to_clip(
     if amix_count > 0:
         filter_complex += f"{mix_inputs}amix=inputs={amix_count}:duration=longest[outa]"
         audio_map = "[outa]"
-        audio_codec = ["-c:a", "aac", "-b:a", "192k"]
+        audio_codec = ["-c:a", "aac", "-b:a", "192k", "-ar", "44100"]
     else:
         # No audio segments, just keep it silent or add a dummy silent track
         # For simplicity, we'll map the video's audio if it exists, but the video is silent
         # Better: create a silent audio track
         filter_complex += "anullsrc=r=44100:cl=stereo[outa]"
         audio_map = "[outa]"
-        audio_codec = ["-c:a", "aac", "-b:a", "128k"]
+        audio_codec = ["-c:a", "aac", "-b:a", "192k", "-ar", "44100"]
 
     cmd = [
         FFMPEG_EXE, "-y",
@@ -299,3 +299,32 @@ def burn_subtitles(
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg Burn Subtitles failed: {e.stderr}")
         raise RuntimeError(f"FFmpeg error: {e.stderr}")
+
+
+def normalize_video(
+    input_path: str,
+    output_path: str,
+    fps: int = 24,
+    resolution: str = "1280x720"
+) -> str:
+    """
+    Standardize a video clip's format for concatenation.
+    Ensures H.264, AAC 192k 44.1kHz, and specific resolution/FPS.
+    """
+    cmd = [
+        FFMPEG_EXE, "-y",
+        "-i", input_path,
+        "-vf", f"scale={resolution.replace('x', ':')}:force_original_aspect_ratio=decrease,pad={resolution.replace('x', ':')}:(ow-iw)/2:(oh-ih)/2",
+        "-r", str(fps),
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+        output_path
+    ]
+    
+    logger.info(f"Normalizing clip: {input_path} -> {output_path}")
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return output_path
+    except Exception as e:
+        logger.error(f"Failed to normalize clip {input_path}: {e}")
+        return input_path # Fallback to original

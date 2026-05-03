@@ -48,17 +48,32 @@ class VideoAgent:
         self.subtitles = self.config.get("subtitles", False)
         self.force = self.config.get("force", False)
         
+        self.phase1_state_file = self.config.get("phase1_state_file")
+        self.timing_manifest_file = self.config.get("timing_manifest_file")
+
         # 1. Identity
-        self.project_id = self.config.get("project_id", "project_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
+        self.project_id = self.config.get("project_id")
+        if not self.project_id:
+            # Try to derive from phase1_state_file name
+            if self.phase1_state_file:
+                name = Path(self.phase1_state_file).stem
+                if "phase1_state_" in name:
+                    self.project_id = name.replace("phase1_state_", "project_")
+                elif "phase2_state_" in name:
+                    self.project_id = name.replace("phase2_state_", "project_")
+                else:
+                    # Generic project ID from filename
+                    self.project_id = f"project_{name}"
+            
+        if not self.project_id:
+            self.project_id = "project_" + datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # 2. Paths
         self.data_dir = Path(self.config.get("data_dir", DEFAULT_DATA_DIR))
-        self.phase1_state_file = self.config.get("phase1_state_file")
-        self.timing_manifest_file = self.config.get("timing_manifest_file")
         
         # 3. Project Output Directory (Isolated)
         self.project_dir = self.data_dir / "video/phase3" / self.project_id
-        self.frames_dir = self.project_dir / "frames"
+        self.frames_dir = self.data_dir / "video/phase3/frames"
         self.clips_dir = self.project_dir / "clips"
         
         # Ensure directories exist
@@ -131,8 +146,8 @@ class VideoAgent:
             logger.info(f"\n[Scene {i}/{len(scenes_data)}] {scene_title}")
             
             try:
-                frame_path, full_prompt = self._ensure_frame(scene, project_id, phase1_state)
-                clip_path, duration_sec = self._ensure_clip(scene, frame_path, timing_manifest, project_id, phase1_state)
+                frame_path, full_prompt = self._ensure_frame(scene, self.project_id, phase1_state)
+                clip_path, duration_sec = self._ensure_clip(scene, frame_path, timing_manifest, self.project_id, phase1_state)
                 
                 total_duration_sec += duration_sec
                 processed_scenes.append(SceneClipOutput(
@@ -140,7 +155,7 @@ class VideoAgent:
                     clip_path=clip_path,
                     duration_seconds=duration_sec,
                     frame_path=frame_path,
-                    animation_effect=compositor_tool.get_animation_effect(scene.get("mood", "default")),
+                    animation_effect=compositor_tool.get_animation_effect(scene),
                     image_prompt_used=full_prompt,
                     comfy_workflow_used="wan2.1_t2i"
                 ))
@@ -149,7 +164,7 @@ class VideoAgent:
                 continue
 
         logger.info("\n[Final Assembly] Concatenating all scenes...")
-        final_video_path = str(self.phase3_dir / "final_output.mp4")
+        final_video_path = str(self.project_dir / "final_output.mp4")
         clip_paths = [s.clip_path for s in processed_scenes]
         transitions = ["cut"] * (len(clip_paths) - 1)
         
@@ -159,9 +174,9 @@ class VideoAgent:
             if self.subtitles:
                 logger.info("[Final Assembly] Burning subtitles...")
                 tm_for_srt = {"scenes": [self._get_timing_manifest_scene(s["scene_id"], timing_manifest, s) for s in scenes_data]}
-                srt_path = str(self.phase3_dir / "subtitles.srt")
+                srt_path = str(self.project_dir / "subtitles.srt")
                 subtitle_tool.generate_srt(tm_for_srt, srt_path)
-                subtitled_video_path = str(self.phase3_dir / "final_output_subtitled.mp4")
+                subtitled_video_path = str(self.project_dir / "final_output_subtitled.mp4")
                 final_video_path = ffmpeg_tool.burn_subtitles(final_video_path, srt_path, subtitled_video_path)
             
             logger.info(f"\n" + "="*50 + f"\nPIPELINE COMPLETE: {final_video_path}\n" + "="*50)
@@ -183,28 +198,61 @@ class VideoAgent:
             raise RuntimeError(f"Final composition error: {e}")
 
     def _ensure_frame(self, scene: Dict[str, Any], project_id: str, phase1_state: Dict[str, Any]) -> tuple:
+        """Ensure a frame exists for the scene, either from cache or generation."""
         scene_id = scene["scene_id"]
         cached_path = self.frames_dir / f"scene_{project_id}_{scene_id}.png"
         
         visual_desc = scene.get("visual_description", "")
         visual_prompt = scene.get("visual_prompt", "") 
-        full_prompt = f"{visual_desc}, {visual_prompt}, cinematic lighting, 8k"
         
-        char_descs = [c.get("visual_description", "") for c in phase1_state.get("characters", []) 
-                     if any(name in visual_desc.lower() for name in c.get("name", "").lower().split())]
+        # 1. Identify characters in this scene
+        char_ids_in_scene = {d.get("character_id") for d in scene.get("dialogues", [])}
+        # Also check if character name is in visual description
+        all_chars = phase1_state.get("characters", [])
+        char_descs = []
+        focused_char_name = None
+        
+        for char in all_chars:
+            name = char.get("name", "").lower()
+            if char.get("character_id") in char_ids_in_scene or (name and name in visual_desc.lower()):
+                char_descs.append(char.get("visual_description", ""))
+                if not focused_char_name:
+                    focused_char_name = char.get("name")
+
+        # 2. Construct Forced Character Prompt
+        # We put the character description AT THE FRONT to give it the most weight in ComfyUI
         if char_descs:
-            full_prompt = ". ".join(char_descs) + ". " + full_prompt
+            # Force character rendering with anchoring keywords
+            anchor = "Cinematic portrait of" if ("close-up" in visual_desc.lower() or "face" in visual_desc.lower()) else "Full body shot of"
+            main_subject = ". ".join(char_descs)
+            full_prompt = f"{anchor} {main_subject}, {visual_desc}, {visual_prompt}, highly detailed character features, cinematic lighting, 8k"
+            logger.info(f"  -> [Prompt] Character focused: {focused_char_name or 'Unknown'}")
+        else:
+            full_prompt = f"{visual_desc}, {visual_prompt}, cinematic lighting, 8k"
 
         if cached_path.exists() and not self.force:
             logger.info(f"  -> [1/3] Frame: Using cached frame.")
             return str(cached_path), full_prompt
         
         logger.info(f"  -> [1/3] Frame: Generating via ComfyUI...")
-        frame_path = image_gen_tool.generate_image(prompt=full_prompt, scene_id=f"{project_id}_{scene_id}", comfy_url=self.comfy_url)
+        frame_path = image_gen_tool.generate_image(
+            prompt=full_prompt,
+            scene_id=f"{project_id}_{scene_id}",
+            comfy_url=self.comfy_url
+        )
         return frame_path, full_prompt
 
     def _ensure_clip(self, scene: Dict[str, Any], frame_path: str, timing_manifest: List[Dict[str, Any]], project_id: str, phase1_state: Dict[str, Any]) -> tuple:
         scene_id = scene["scene_id"]
+        final_clip_path = self.clips_dir / f"{project_id}_{scene_id}.mp4"
+        
+        # Caching check
+        if final_clip_path.exists() and not self.force:
+            logger.info(f"  -> [2/3] Clip: Using cached clip.")
+            tm_scene = self._get_timing_manifest_scene(scene_id, timing_manifest, scene)
+            duration_sec = tm_scene["total_duration_ms"] / 1000.0
+            return str(final_clip_path), duration_sec
+
         tm_scene = self._get_timing_manifest_scene(scene_id, timing_manifest, scene)
         duration_sec = tm_scene["total_duration_ms"] / 1000.0
         
@@ -239,5 +287,5 @@ class VideoAgent:
             clip_path = compositor_tool.compose_scene(scene, frame_path, tm_scene, str(self.clips_dir), self.fps, self.resolution)
 
         final_clip_path = self.clips_dir / f"{project_id}_{scene_id}.mp4"
-        os.replace(clip_path, final_clip_path)
+        ffmpeg_tool.normalize_video(clip_path, str(final_clip_path), self.fps, self.resolution)
         return str(final_clip_path), duration_sec
