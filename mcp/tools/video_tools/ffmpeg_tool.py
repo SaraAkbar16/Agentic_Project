@@ -9,7 +9,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
 
@@ -102,30 +102,32 @@ def apply_ken_burns(
 def merge_audio_to_clip(
     video_path: str,
     audio_segments: List[Dict[str, Any]],
-    bgm_path: str,
+    bgm_path: Optional[str],
     output_path: str,
-    total_duration_ms: int
+    total_duration_ms: int,
+    bgm_offset_ms: int = 0
 ) -> str:
     """
-    Merge multiple audio segments and BGM into a video clip.
+    Merge multiple audio segments and optional background music into a video clip.
+    Includes support for bgm_offset_ms to allow continuous music across clips.
     """
     duration_sec = total_duration_ms / 1000.0
     
     # Construct complex filter for audio mixing
-    # We need to delay each segment and mix with BGM
     inputs = ["-i", video_path]
     filter_complex = ""
     
     # Load dialogue segments
     for i, seg in enumerate(audio_segments):
         inputs.extend(["-i", seg["audio_file"]])
-        # Delay segment i+1 (since index 0 is video)
         filter_complex += f"[{i+1}:a]adelay={seg['start_ms']}|{seg['start_ms']}[a{i}];"
     
     # Load BGM if provided
-    if bgm_path:
+    if bgm_path and os.path.exists(bgm_path):
         bgm_idx = len(audio_segments) + 1
-        inputs.extend(["-i", bgm_path])
+        # Use -ss for offset to keep music continuous
+        offset_sec = bgm_offset_ms / 1000.0
+        inputs.extend(["-ss", str(offset_sec), "-i", bgm_path])
         # Lower BGM volume
         filter_complex += f"[{bgm_idx}:a]volume=0.3[bgm];"
         mix_inputs = "".join([f"[a{i}]" for i in range(len(audio_segments))]) + "[bgm]"

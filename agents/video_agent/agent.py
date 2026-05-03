@@ -76,6 +76,9 @@ class VideoAgent:
         self.frames_dir = self.data_dir / "video/phase3/frames"
         self.clips_dir = self.project_dir / "clips"
         
+        # Memory for continuous music
+        self.bgm_playtime = {}
+        
         # Ensure directories exist
         self.frames_dir.mkdir(parents=True, exist_ok=True)
         self.clips_dir.mkdir(parents=True, exist_ok=True)
@@ -107,10 +110,17 @@ class VideoAgent:
         scene_end_ms = max(s.get("end_ms", 0) for s in scene_segments)
         duration_ms = scene_end_ms - scene_start_ms
         
+        # Match segments with dialogue text from scene_data
         dialogues = scene_data.get("dialogues", [])
         audio_segments = []
+        bgm_file = None
+        
         for i, s in enumerate(scene_segments):
             text = dialogues[i].get("text", "") if i < len(dialogues) else ""
+            # Extract BGM if present in the manifest
+            if not bgm_file and s.get("bgm_file"):
+                bgm_file = s["bgm_file"]
+                
             audio_segments.append({
                 "character": s.get("character_id", ""),
                 "line": text, 
@@ -118,7 +128,13 @@ class VideoAgent:
                 "start_ms": s["start_ms"] - scene_start_ms,
                 "end_ms": s["end_ms"] - scene_start_ms
             })
-        return {"scene_id": scene_id, "total_duration_ms": duration_ms, "audio_segments": audio_segments, "bgm_file": None}
+            
+        return {
+            "scene_id": scene_id,
+            "total_duration_ms": duration_ms,
+            "audio_segments": audio_segments,
+            "bgm_file": str(BASE_DIR / bgm_file) if bgm_file else None
+        }
 
     def _save_state(self, state: Phase3State):
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -147,7 +163,7 @@ class VideoAgent:
             
             try:
                 frame_path, full_prompt = self._ensure_frame(scene, self.project_id, phase1_state)
-                clip_path, duration_sec = self._ensure_clip(scene, frame_path, timing_manifest, self.project_id, phase1_state)
+                clip_path, duration_sec = self._ensure_clip(scene, frame_path, timing_manifest, phase1_state)
                 
                 total_duration_sec += duration_sec
                 processed_scenes.append(SceneClipOutput(
@@ -242,20 +258,26 @@ class VideoAgent:
         )
         return frame_path, full_prompt
 
-    def _ensure_clip(self, scene: Dict[str, Any], frame_path: str, timing_manifest: List[Dict[str, Any]], project_id: str, phase1_state: Dict[str, Any]) -> tuple:
+    def _ensure_clip(self, scene: Dict[str, Any], frame_path: str, timing_manifest: List[Dict[str, Any]], phase1_state: Dict[str, Any]) -> tuple:
         scene_id = scene["scene_id"]
-        final_clip_path = self.clips_dir / f"{project_id}_{scene_id}.mp4"
+        final_clip_path = self.clips_dir / f"{scene_id}.mp4"
         
+        tm_scene = self._get_timing_manifest_scene(scene_id, timing_manifest, scene)
+        duration_sec = tm_scene["total_duration_ms"] / 1000.0
+        bgm_file = tm_scene.get("bgm_file")
+        
+        # Calculate offset for continuous music
+        bgm_offset_ms = 0
+        if bgm_file:
+            bgm_offset_ms = self.bgm_playtime.get(bgm_file, 0)
+
         # Caching check
         if final_clip_path.exists() and not self.force:
             logger.info(f"  -> [2/3] Clip: Using cached clip.")
-            tm_scene = self._get_timing_manifest_scene(scene_id, timing_manifest, scene)
-            duration_sec = tm_scene["total_duration_ms"] / 1000.0
+            if bgm_file:
+                self.bgm_playtime[bgm_file] = bgm_offset_ms + tm_scene["total_duration_ms"]
             return str(final_clip_path), duration_sec
 
-        tm_scene = self._get_timing_manifest_scene(scene_id, timing_manifest, scene)
-        duration_sec = tm_scene["total_duration_ms"] / 1000.0
-        
         dialogue_exists = len(scene.get("dialogues", [])) > 0
         visual_text = (scene.get("visual_description", "") + scene.get("visual_prompt", "")).lower()
         char_names = [c.get("name", "").lower() for c in phase1_state.get("characters", []) if c.get("name")]
@@ -269,23 +291,49 @@ class VideoAgent:
                 char_name = next((c.get("name", char_id) for c in phase1_state.get("characters", []) if c["character_id"] == char_id), char_id)
                 logger.info(f"  -> [2/3] Character: {char_name} detected.")
                 
-                base_clip = compositor_tool.compose_scene(scene, frame_path, tm_scene, str(self.clips_dir), self.fps, self.resolution)
+                # Composition with BGM offset
+                base_clip = compositor_tool.compose_scene(
+                    scene=scene, 
+                    frame_path=frame_path, 
+                    timing_manifest_scene=tm_scene, 
+                    clips_dir=str(self.clips_dir), 
+                    fps=self.fps, 
+                    resolution=self.resolution,
+                    bgm_offset_ms=bgm_offset_ms
+                )
                 temp_audio = str(self.clips_dir / f"temp_{scene_id}.wav")
+                # ... rest of wav2lip logic remains similar
                 from mcp.tools.video_tools.ffmpeg_tool import FFMPEG_EXE
                 subprocess.run([FFMPEG_EXE, "-y", "-i", base_clip, "-vn", "-acodec", "pcm_s16le", temp_audio], check=True, capture_output=True)
                 
                 logger.info(f"  -> [3/3] Syncing: Running Wav2Lip...")
                 synced_path = str(self.clips_dir / f"synced_{scene_id}.mp4")
-                wav2lip_tool.sync_lips(frame_path, temp_audio, synced_path)
-                clip_path = synced_path
+                final_video = wav2lip_tool.sync_lips(frame_path, temp_audio, synced_path)
+                
+                # Update playtime memory
+                if bgm_file:
+                    self.bgm_playtime[bgm_file] = bgm_offset_ms + tm_scene["total_duration_ms"]
+                    
+                return final_video, duration_sec
             except Exception as e:
-                logger.warning(f"  -> [2/3] Lip Sync skipped: {e}. (Falling back to animation)")
-                clip_path = compositor_tool.compose_scene(scene, frame_path, tm_scene, str(self.clips_dir), self.fps, self.resolution)
-        else:
-            logger.info(f"  -> [2/3] Character: No sync-eligible face found.")
-            logger.info(f"  -> [3/3] Animation: Composing Ken Burns clip...")
-            clip_path = compositor_tool.compose_scene(scene, frame_path, tm_scene, str(self.clips_dir), self.fps, self.resolution)
+                logger.warning(f"  -> [Phase 3] Lip Sync skipped for {scene_id}: {e}")
 
-        final_clip_path = self.clips_dir / f"{project_id}_{scene_id}.mp4"
+        # Fallback to standard Ken Burns clip
+        logger.info(f"  -> [3/3] Animation: Composing Ken Burns clip...")
+        clip_path = compositor_tool.compose_scene(
+            scene=scene, 
+            frame_path=frame_path, 
+            timing_manifest_scene=tm_scene, 
+            clips_dir=str(self.clips_dir), 
+            fps=self.fps, 
+            resolution=self.resolution,
+            bgm_offset_ms=bgm_offset_ms
+        )
+        
+        # Update playtime memory
+        if bgm_file:
+            self.bgm_playtime[bgm_file] = bgm_offset_ms + tm_scene["total_duration_ms"]
+            
+        final_clip_path = self.clips_dir / f"{self.project_id}_{scene_id}.mp4"
         ffmpeg_tool.normalize_video(clip_path, str(final_clip_path), self.fps, self.resolution)
         return str(final_clip_path), duration_sec

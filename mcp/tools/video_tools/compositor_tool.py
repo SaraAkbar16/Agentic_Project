@@ -54,7 +54,8 @@ def compose_scene(
     timing_manifest_scene: Dict[str, Any],
     clips_dir: str,
     fps: int = 24,
-    resolution: str = "1280x720"
+    resolution: str = "1280x720",
+    bgm_offset_ms: int = 0
 ) -> str:
     """
     Produce a complete video clip for a single scene.
@@ -62,7 +63,7 @@ def compose_scene(
     Steps:
     1. Determine effect.
     2. Apply Ken Burns.
-    3. Merge audio (dialogue + BGM).
+    3. Merge audio (dialogue + BGM with offset).
     """
     scene_id = scene["scene_id"]
     effect = get_animation_effect(scene)
@@ -96,7 +97,8 @@ def compose_scene(
         audio_segments=audio_segments,
         bgm_path=bgm_path,
         output_path=final_clip_path,
-        total_duration_ms=duration_ms
+        total_duration_ms=duration_ms,
+        bgm_offset_ms=bgm_offset_ms
     )
     
     # Cleanup temporary silent clip

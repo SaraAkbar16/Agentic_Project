@@ -194,10 +194,49 @@ def _generate_dialogue_audio_lines(
     return dialogue_tracks, generated_files
 
 
+def _get_bgm_for_mood(mood: str, assets_dir: str) -> str | None:
+    """Find a matching music track in assets/music/ based on the scene mood."""
+    music_dir = os.path.join(assets_dir, "assets", "music")
+    if not os.path.exists(music_dir):
+        return None
+        
+    mood = mood.lower()
+    # Priority mapping
+    mapping = {
+        "action": ["action", "tense", "fast", "exciting"],
+        "reflective": ["reflective", "sad", "calm", "mysterious"],
+        "happy": ["happy", "uplifting", "hopeful"],
+        "horror": ["horror", "scary", "dark"],
+    }
+    
+    # Try to find a file that matches the mood or a related keyword
+    available_files = os.listdir(music_dir)
+    if not available_files:
+        return None
+        
+    # 1. Exact match
+    for f in available_files:
+        if mood in f.lower():
+            return os.path.join("assets", "music", f).replace("\\", "/")
+            
+    # 2. Keyword match
+    for category, keywords in mapping.items():
+        if any(kw in mood for kw in keywords):
+            for f in available_files:
+                if category in f.lower():
+                    return os.path.join("assets", "music", f).replace("\\", "/")
+                    
+    # 3. Default to first available if it's the only one, or return None
+    return os.path.join("assets", "music", available_files[0]).replace("\\", "/")
+
+
 def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
     """Process a Phase-1 JSON file and emit Phase-2 augmented JSON."""
     phase1_path = os.path.abspath(phase1_path)
     parent = os.path.dirname(phase1_path)
+    # The root of the project is one level up from parent (if parent is data/outputs)
+    # Actually, let's use the current CWD or find it.
+    root_dir = os.getcwd()
 
     with open(phase1_path, "r", encoding="utf-8") as fh:
         phase1 = json.load(fh)
@@ -205,55 +244,49 @@ def run_phase2_on_file(phase1_path: str) -> Dict[str, Any]:
     # 1. Identity
     project_id = _get_project_id(phase1)
     
-    # generate dialogue audio and timings
+    # 2. Generate dialogue audio
     dialogue_tracks, generated_files = _generate_dialogue_audio_lines(phase1, parent, project_id)
 
-    # build audio block
-    audio_block = {"dialogue_tracks": dialogue_tracks, "background_music": []}
-
+    # 3. Build timing manifest with BGM
+    timing_manifest = []
+    scenes = sorted(phase1.get("scenes", []), key=lambda s: s.get("order", 0))
+    
+    for scene in scenes:
+        scene_id = scene["scene_id"]
+        scene_tracks = [t for t in dialogue_tracks if t["scene_id"] == scene_id]
+        
+        # Get BGM for this scene
+        bgm_file = _get_bgm_for_mood(scene.get("mood", "default"), root_dir)
+        
+        for track in scene_tracks:
+            timing_manifest.append({
+                "scene_id": scene_id,
+                "audio_file": track["audio_file"],
+                "start_ms": track["start_ms"],
+                "end_ms": track["end_ms"],
+                "bgm_file": bgm_file # Include BGM path at the track level for Phase 3 to read
+            })
+    
+    # Save manifest
+    manifest_path = os.path.join(parent, "audio", "phase2", project_id, "timing_manifest.json")
+    _ensure_dir(os.path.dirname(manifest_path))
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
+    
+    main_manifest_path = os.path.join(parent, "timing_manifest.json")
+    with open(main_manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
+        
     # prepare phase2 state copy
-    phase2 = dict(phase1)  # shallow copy top-level
-    phase2["audio"] = audio_block
-
-    # update meta
+    phase2 = dict(phase1)
+    phase2["audio"] = {"dialogue_tracks": dialogue_tracks, "background_music": []}
     meta = dict(phase2.get("meta", {}))
     meta["project_id"] = project_id
     meta["current_version"] = 2
     meta["last_updated"] = _iso_now()
     phase2["meta"] = meta
 
-    # versions list
-    versions = phase2.get("versions") or []
-    versions.append({
-        "version": 2,
-        "change_summary": f"Generated dialogue audio for {project_id}",
-        "changed_by": "phase_2_audio_agent",
-    })
-    phase2["versions"] = versions
-
-    # Save timing manifest separately as required
-    timing_manifest = []
-    for track in dialogue_tracks:
-        timing_manifest.append({
-            "scene_id": track["scene_id"],
-            "audio_file": track["audio_file"],
-            "start_ms": track["start_ms"],
-            "end_ms": track["end_ms"]
-        })
-    
-    # Save manifest inside the project's audio dir for easier reference
-    manifest_path = os.path.join(parent, "audio", "phase2", project_id, "timing_manifest.json")
-    _ensure_dir(os.path.dirname(manifest_path))
-    with open(manifest_path, "w", encoding="utf-8") as fh:
-        json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
-    
-    # Also save one in the main output dir for Phase 3's default behavior
-    main_manifest_path = os.path.join(parent, "timing_manifest.json")
-    with open(main_manifest_path, "w", encoding="utf-8") as fh:
-        json.dump(timing_manifest, fh, indent=2, ensure_ascii=False)
-        
-    print(f"[AudioAgent] Timing manifest saved to: {manifest_path}")
-
+    print(f"[AudioAgent] Timing manifest (with BGM) saved to: {manifest_path}")
     return phase2
 
 
