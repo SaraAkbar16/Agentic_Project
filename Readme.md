@@ -1,47 +1,86 @@
-# AgenticAI Project (GroupName)
+# AgenticAI Project | PixFrame AI
 
-A modular agent framework that organizes tools (MCP), agents, backend, and frontend code.
+An end-to-end **AI-powered animated video generation system** that converts a single prompt into a complete short film using modular LLM agents.
 
-## Quick Start
+---
+<img width="1914" height="916" alt="Screenshot 2026-05-03 205943" src="https://github.com/user-attachments/assets/546035ef-3a5a-46c6-b0f5-fc35929db7a0" />
 
-Prerequisites:
+## Overview
 
-- Python 3.9+ (or project virtual environment)
-- Install dependencies:
+This project implements a **multi-phase agentic pipeline**:
 
-```bash
-pip install -r requirements.txt
-```
-
-Basic run (example):
-
-```bash
-python -m backend.app
-```
-
-Adjust commands depending on which agent or script you want to run (see `scripts/`).
-
-## Repository Layout
-
-- `agents/` — agent implementations and tests (story, audio, video, edit)
-- `mcp/` — modular tools and tool-execution layer (llm, audio, vision, video, system)
-- `backend/` — web backend, API routes, and websocket handlers
-- `frontend/` — web UI source and `package.json`
-- `data/` — outputs, temporary files, and state versions
-- `shared/` — shared schemas, utilities, and constants
-- `state_manager/` — state persistence, snapshots, and history
-- `tests/` — unit and integration tests
-- `scripts/` — convenience scripts to run phases or workflows
-
-## Contributing
-
-- Follow existing code style in each package.
-- Add tests under the matching `tests/` folders.
-
-## Contact
-
-For questions or issues, open an issue or contact the maintainers.
+1. **Story & Script Generation** — Prompt → structured story, scenes, characters
+2. **Audio Generation** — Dialogue + character voices + background music
+3. **Video Composition** — Scene visuals + animation + A/V sync → final video
+4. **Web Interface** — UI to run pipeline, track progress, and preview output
+5. **Edit Agent** — Natural language edits with versioning and undo support
 
 ---
 
-This README replaces the previous plain tree dump with a concise project overview and usage hints.
+## Tech Stack
+
+| Layer | Tools |
+|---|---|
+| Backend | FastAPI |
+| Frontend | Next.js / React |
+| Agents | LangGraph / LLM APIs |
+| Audio | ElevenLabs / Coqui / Bark (TTS) |
+| Video | FFmpeg / MoviePy |
+| Image Generation | Stable Diffusion / APIs |
+| State Management | JSON + version snapshots |
+
+---
+
+## Quick Start
+
+### Backend
+
+```bash
+pip install -r requirements.txt
+python -m backend.app
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## Features
+
+- Prompt → full animated video pipeline
+- Scene-wise generation (modular phases)
+- Real-time progress tracking (Phase 4)
+- Phase-level re-run support
+- Edit agent with:
+  - Natural language edits
+  - Targeted regeneration (audio / video / script)
+  - Version history (v1, v2, v3…)
+  - Undo / revert system
+
+---
+
+## Project Structure
+
+```
+agents/          # Phase-wise agents (story, audio, video, edit)
+backend/         # API + orchestration layer
+frontend/        # Web UI
+mcp/             # Tooling layer (LLM, audio, video, etc.)
+state_manager/   # Versioning + snapshots
+data/            # Outputs and assets
+shared/          # Schemas and utilities
+```
+
+---
+
+## Notes
+
+- All phases communicate via a shared JSON state schema
+- Each phase is modular and independently testable
+- Every run/edit creates a new version snapshot
+
