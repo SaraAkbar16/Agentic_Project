@@ -334,6 +334,6 @@ class VideoAgent:
         if bgm_file:
             self.bgm_playtime[bgm_file] = bgm_offset_ms + tm_scene["total_duration_ms"]
             
-        final_clip_path = self.clips_dir / f"{self.project_id}_{scene_id}.mp4"
+        final_clip_path = self.clips_dir / f"{scene_id}.mp4"
         ffmpeg_tool.normalize_video(clip_path, str(final_clip_path), self.fps, self.resolution)
         return str(final_clip_path), duration_sec

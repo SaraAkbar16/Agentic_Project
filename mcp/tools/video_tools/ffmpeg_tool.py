@@ -281,17 +281,27 @@ def burn_subtitles(
     sub_dir = Path(subtitle_file).parent
     sub_name = Path(subtitle_file).name
     
+    # If input and output are the same, we must use a temporary file
+    actual_output = output_path
+    if os.path.abspath(video_path) == os.path.abspath(output_path):
+        actual_output = str(Path(output_path).with_suffix(".tmp.mp4"))
+
     cmd = [
         FFMPEG_EXE, "-y",
         "-i", str(Path(video_path).absolute()),
         "-vf", f"subtitles={sub_name}",
         "-c:a", "copy",
-        str(Path(output_path).absolute())
+        str(Path(actual_output).absolute())
     ]
     
     logger.info(f"Executing FFmpeg Burn Subtitles in {sub_dir}: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(sub_dir))
+        
+        # If we used a temporary file, move it back to output_path
+        if actual_output != output_path:
+            os.replace(actual_output, output_path)
+            
         return output_path
 
     except FileNotFoundError:
@@ -313,6 +323,11 @@ def normalize_video(
     Standardize a video clip's format for concatenation.
     Ensures H.264, AAC 192k 44.1kHz, and specific resolution/FPS.
     """
+    # If input and output are the same, we must use a temporary file
+    actual_output = output_path
+    if os.path.abspath(input_path) == os.path.abspath(output_path):
+        actual_output = str(Path(output_path).with_suffix(".tmp.mp4"))
+
     cmd = [
         FFMPEG_EXE, "-y",
         "-i", input_path,
@@ -320,12 +335,17 @@ def normalize_video(
         "-r", str(fps),
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
-        output_path
+        actual_output
     ]
     
-    logger.info(f"Normalizing clip: {input_path} -> {output_path}")
+    logger.info(f"Normalizing clip: {input_path} -> {actual_output}")
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
+        
+        # If we used a temporary file, move it back to output_path
+        if actual_output != output_path:
+            os.replace(actual_output, output_path)
+            
         return output_path
     except Exception as e:
         logger.error(f"Failed to normalize clip {input_path}: {e}")

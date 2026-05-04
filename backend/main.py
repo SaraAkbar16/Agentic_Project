@@ -218,9 +218,75 @@ async def get_history():
     return history
 
 @app.post("/rerun-phase")
-async def rerun_phase(request: RerunRequest):
-    # Logic to trigger specific run based on phase index
-    return {"status": "re-run triggered"}
+async def rerun_phase(request: RerunRequest, background_tasks: BackgroundTasks):
+    project_id = request.project_id
+    if project_id not in event_queues:
+        event_queues[project_id] = asyncio.Queue()
+    
+    background_tasks.add_task(run_rerun_pipeline, project_id, request.phase, request.params)
+    return {"status": "re-run triggered", "project_id": project_id}
+
+async def run_rerun_pipeline(project_id: str, start_phase: int, params: Optional[Dict[str, Any]] = {}):
+    handler = SSEHandler(project_id)
+    logging.getLogger().addHandler(handler)
+    
+    try:
+        p1_path = (OUTPUT_DIR / f"phase1_state_{project_id}.json").resolve()
+        manifest_path = (OUTPUT_DIR / "audio" / "phase2" / project_id / "timing_manifest.json").resolve()
+
+        # Phase 1: Story (only if start_phase <= 1)
+        if start_phase <= 1:
+            await log_to_stream(project_id, 1, "running", "Regenerating Story Script...")
+            # We need the original prompt. If not in project_states, we might need to find it.
+            prompt = project_states.get(project_id, {}).get("prompt", "Continued story")
+            phase1_state = generate_phase1_state(prompt)
+            if "meta" not in phase1_state: phase1_state["meta"] = {}
+            phase1_state["meta"]["project_id"] = project_id
+            with open(p1_path, "w") as f:
+                json.dump(phase1_state, f, indent=2)
+            await log_to_stream(project_id, 1, "completed", "Script regenerated.")
+        else:
+            if not p1_path.exists():
+                raise FileNotFoundError(f"Cannot rerun from phase {start_phase}: Phase 1 state missing.")
+            with open(p1_path, "r") as f:
+                phase1_state = json.load(f)
+
+        # Phase 2: Audio (only if start_phase <= 2)
+        if start_phase <= 2:
+            await log_to_stream(project_id, 2, "running", "Regenerating Audio & BGM...")
+            run_phase2_on_file(str(p1_path))
+            await log_to_stream(project_id, 2, "completed", "Audio assets regenerated.")
+
+        # Phase 3: Video (always if start_phase <= 3)
+        if start_phase <= 3:
+            await log_to_stream(project_id, 3, "running", "Re-initializing Video Engine...")
+            video_config = {
+                "phase1_state_file": str(p1_path),
+                "timing_manifest_file": str(manifest_path),
+                "project_id": project_id,
+                "data_dir": str(OUTPUT_DIR.resolve()),
+                "subtitles": True,
+                "force": params.get("force", False) # Use force if explicitly requested
+            }
+            agent = VideoAgent(video_config)
+            await asyncio.to_thread(agent.run)
+            await log_to_stream(project_id, 3, "completed", "Video composition finished.")
+
+        # Phase 4: Output
+        rel_path = f"video/phase3/{project_id}/final_output_subtitled.mp4"
+        await event_queues[project_id].put({
+            "phase": 4, 
+            "status": "completed", 
+            "log": "Rerun completed!", 
+            "progress": 100,
+            "output_url": f"/output/{rel_path}"
+        })
+
+    except Exception as e:
+        logging.error(f"Rerun Error: {e}", exc_info=True)
+        await log_to_stream(project_id, start_phase, "failed", f"Rerun Error: {str(e)}")
+    finally:
+        logging.getLogger().removeHandler(handler)
 
 if __name__ == "__main__":
     import uvicorn
