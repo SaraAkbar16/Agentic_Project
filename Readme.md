@@ -3,6 +3,8 @@
 An end-to-end **AI-powered animated video generation system** that converts a single prompt into a complete short film using modular LLM agents.
 
 ---
+<img width="1908" height="788" alt="image" src="https://github.com/user-attachments/assets/594629b7-a4b0-4b4d-9780-13de00eb24d0" />
+<img width="1916" height="838" alt="image" src="https://github.com/user-attachments/assets/c3f97515-5c2f-4643-9fd8-21cd8d942ab1" />
 <img width="1914" height="916" alt="Screenshot 2026-05-03 205943" src="https://github.com/user-attachments/assets/546035ef-3a5a-46c6-b0f5-fc35929db7a0" />
 
 ## Overview
