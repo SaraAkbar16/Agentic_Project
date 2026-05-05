@@ -36,7 +36,7 @@ logger = logging.getLogger("phase3.image_gen")
 def generate_image(
     prompt: str,
     scene_id: str,
-    negative_prompt: str = "blurry, low quality, distorted, deformed",
+    negative_prompt: str = "poorly drawn, bad anatomy, bad hands, bad eyes, missing fingers, extra fingers, ugly, deformed, disfigured, blurry, grainy, out of focus, low resolution, amateur, poorly lit, oversaturated, undersaturated, watermark, signature, text, writing, noise, artifacts",
     comfy_url: str = COMFY_URL
 ) -> str:
     """
