@@ -9,3 +9,77 @@ $input = "a man enjoying his latte in a coffee shop"; $input | python scripts/ru
 
 phase2
 python scripts/run_phase2_cli.py data/outputs/phase1_state_20260428_191627.json
+
+
+
+===== TEST EXAMPLES ======
+
+
+Basic Story Prompts (Sanity Testing)
+
+A young astronaut discovers a hidden ocean beneath the surface of Mars and meets a mysterious glowing creature.
+
+A lonely robot finds a broken music box in a junkyard and learns the meaning of friendship.
+
+A cat accidentally becomes the mayor of a small town and tries to fix everyone’s problems.
+
+Dialogue-Heavy Prompts
+
+Two best friends argue about whether to leave Earth before an incoming asteroid destroys it.
+
+A detective interrogates a suspect who may or may not be a time traveler.
+
+A teacher and a rebellious student debate whether AI will replace humans.
+
+Visual & Cinematic Prompts
+
+A cyberpunk city at night where a hacker escapes drones across neon rooftops.
+
+A medieval battlefield where a lone knight stands against an army as a dragon descends from the sky.
+
+A magical forest that changes colors every time someone tells a lie.
+
+
+
+
+Audio edits
+“Make the narrator sound sad”
+“Change the robot voice to deeper and slower”
+“Add suspenseful background music”
+Video edits
+“Make scene 2 darker”
+“Add fog to the forest scene”
+“Zoom into the character during dialogue”
+Script edits
+“Make the ending happy instead of sad”
+“Add a plot twist in the middle”
+“Reduce story to 2 scenes only”
+
+
+==
+
+A small, curious robot lives alone in a quiet junkyard, spending its days collecting broken parts and trying to fix them. One day, it finds a damaged music box that plays a soft, beautiful melody, but it stops halfway. Determined to hear the full song, the robot searches the junkyard for missing pieces, facing obstacles like falling scrap and dim lights. After many attempts, it finally repairs the music box, and as the complete melody plays, the robot experiences a new feeling it cannot understand—happiness. The story ends with the robot sitting under the night sky, listening to the music, no longer feeling alone.
+
+A young boy in a small village notices that the sun hasn’t risen one morning, leaving everything in darkness and confusion. While others panic, he decides to find out what’s wrong and sets off toward the nearby mountains where the sun usually appears. Along the way, he faces obstacles like thick fog, strange noises, and a broken bridge, but keeps going. At the top, he discovers a giant mechanism hidden inside the mountain that controls the sunrise, and it has stopped working. Using simple tools and quick thinking, he manages to fix it, and the sun slowly rises again, bringing light back to the world. The boy quietly returns home, while the village celebrates, unaware of who saved them.ts not accepting /edit and quickly returns 200 without anythign else
+
+==
+The Edit Agent uses a natural-language intent detector based on specific keywords. Currently, it can process four main categories of commands:
+
+1. Visual Edits (Image Generation)
+These commands modify the visual prompt and force ComfyUI to regenerate the frames for the affected scenes.
+
+Commands: "Make it darker", "Make it brighter", "Add a cinematic aesthetic", "Change the character design", "Change the look of the hero".
+Technical Effect: Appends keywords to the visual_description in the project state and re-runs the Video Agent with force=True.
+2. Audio & Music Edits
+These modify the voice profile or the background music mapping.
+
+Commands: "Make the voice energetic", "Make the narrator whisper", "Add background music", "Change the music mood to action".
+Technical Effect: Updates the character's voice_profile or the scene's mood, then re-runs Phase 2 (Audio) and Phase 3 (Composition).
+3. Video Composition Edits
+These affect the final assembly of the video clips.
+
+Commands: "Remove subtitles", "Speed up the video", "Make the scene slower".
+Technical Effect: Toggles flags in the FFmpeg compositor or adjusts durations in the timing manifest.
+4. Script Edits
+Commands: "Regenerate the script", "Change the story ending".
+Technical Effect: Triggers a full re-run of Phase 1 (Story Agent).
