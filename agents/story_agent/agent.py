@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -356,6 +356,52 @@ def _invoke_once(user_prompt: str, project_id: str) -> Dict[str, Any]:
     return validated.model_dump(mode="json")
 
 
+class _Phase1GraphState(TypedDict, total=False):
+    user_prompt: str
+    project_id: str
+    phase1_state: Dict[str, Any]
+
+
+def _invoke_via_langgraph(user_prompt: str, project_id: str) -> Dict[str, Any]:
+    """Invoke Phase 1 generation through a minimal LangGraph node.
+
+    This preserves current behavior by reusing `_invoke_once` as the node body.
+    If LangGraph is unavailable, it falls back to direct invocation.
+    """
+
+    try:
+        from langgraph.graph import END, START, StateGraph
+    except ImportError:
+        logger.info("LangGraph not installed; using direct Phase 1 invocation.")
+        return _invoke_once(user_prompt, project_id)
+
+    def _generate_phase1_node(state: _Phase1GraphState) -> _Phase1GraphState:
+        return {
+            "phase1_state": _invoke_once(
+                state["user_prompt"],
+                state["project_id"],
+            )
+        }
+
+    graph = StateGraph(_Phase1GraphState)
+    graph.add_node("generate_phase1", _generate_phase1_node)
+    graph.add_edge(START, "generate_phase1")
+    graph.add_edge("generate_phase1", END)
+    compiled_graph = graph.compile()
+
+    result = compiled_graph.invoke(
+        {
+            "user_prompt": user_prompt,
+            "project_id": project_id,
+        }
+    )
+
+    phase1_state = result.get("phase1_state")
+    if not isinstance(phase1_state, dict):
+        raise Phase1GenerationError("LangGraph Phase 1 node did not return valid state.")
+    return phase1_state
+
+
 def generate_phase1_state(user_prompt: str) -> Dict[str, Any]:
     """Generate a validated Phase 1 state dictionary from a user prompt.
 
@@ -379,7 +425,7 @@ def generate_phase1_state(user_prompt: str) -> Dict[str, Any]:
 
     for attempt in range(1, attempts + 1):
         try:
-            return _invoke_once(prompt, project_id=project_id)
+            return _invoke_via_langgraph(prompt, project_id=project_id)
         except (ValidationError, ValueError, Phase1GenerationError) as exc:
             last_error = exc
             logger.warning(

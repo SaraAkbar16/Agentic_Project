@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
 
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
@@ -79,6 +79,76 @@ class SSEHandler(logging.Handler):
 
 active_phases: Dict[str, int] = {}
 
+
+class _PipelinePlanState(TypedDict, total=False):
+    start_phase: int
+    phases_to_run: List[int]
+
+
+def _resolve_phase_plan(start_phase: int) -> List[int]:
+    """Resolve run phases using LangGraph when available.
+
+    Fallback behavior is deterministic and equivalent to existing orchestration.
+    """
+    normalized_start = max(1, min(4, int(start_phase)))
+
+    try:
+        from langgraph.graph import START, END, StateGraph
+    except ImportError:
+        logging.getLogger(__name__).info(
+            "LangGraph not installed; using deterministic phase plan fallback."
+        )
+        return [phase for phase in [1, 2, 3, 4] if phase >= normalized_start]
+
+    def phase_1_node(state: _PipelinePlanState) -> _PipelinePlanState:
+        return {"phases_to_run": [*(state.get("phases_to_run") or []), 1]}
+
+    def phase_2_node(state: _PipelinePlanState) -> _PipelinePlanState:
+        return {"phases_to_run": [*(state.get("phases_to_run") or []), 2]}
+
+    def phase_3_node(state: _PipelinePlanState) -> _PipelinePlanState:
+        return {"phases_to_run": [*(state.get("phases_to_run") or []), 3]}
+
+    def phase_4_node(state: _PipelinePlanState) -> _PipelinePlanState:
+        return {"phases_to_run": [*(state.get("phases_to_run") or []), 4]}
+
+    def route_start(state: _PipelinePlanState) -> str:
+        start = state.get("start_phase", 1)
+        if start <= 1:
+            return "phase_1"
+        if start <= 2:
+            return "phase_2"
+        if start <= 3:
+            return "phase_3"
+        return "phase_4"
+
+    graph = StateGraph(_PipelinePlanState)
+    graph.add_node("phase_1", phase_1_node)
+    graph.add_node("phase_2", phase_2_node)
+    graph.add_node("phase_3", phase_3_node)
+    graph.add_node("phase_4", phase_4_node)
+    graph.add_conditional_edges(
+        START,
+        route_start,
+        {
+            "phase_1": "phase_1",
+            "phase_2": "phase_2",
+            "phase_3": "phase_3",
+            "phase_4": "phase_4",
+        },
+    )
+    graph.add_edge("phase_1", "phase_2")
+    graph.add_edge("phase_2", "phase_3")
+    graph.add_edge("phase_3", "phase_4")
+    graph.add_edge("phase_4", END)
+    compiled = graph.compile()
+
+    result = compiled.invoke({"start_phase": normalized_start, "phases_to_run": []})
+    phases = result.get("phases_to_run")
+    if not isinstance(phases, list) or not phases:
+        return [phase for phase in [1, 2, 3, 4] if phase >= normalized_start]
+    return [int(phase) for phase in phases]
+
 async def log_to_stream(project_id: str, phase: int, status: str, log: str = None, progress: int = None):
     active_phases[project_id] = phase
     if project_id in event_queues:
@@ -102,47 +172,50 @@ async def run_full_pipeline(project_id: str, prompt: str):
     logging.getLogger().addHandler(handler)
     
     try:
-        # Phase 1: Story
-        await log_to_stream(project_id, 1, "running", "Generating Story Script...")
-        phase1_state = generate_phase1_state(prompt)
-        # Ensure project_id is in metadata
-        if "meta" not in phase1_state: phase1_state["meta"] = {}
-        phase1_state["meta"]["project_id"] = project_id
-        
+        phase_plan = _resolve_phase_plan(start_phase=1)
+        phase1_state: Dict[str, Any] = {}
         p1_path = (OUTPUT_DIR / f"phase1_state_{project_id}.json").resolve()
-        with open(p1_path, "w") as f:
-            json.dump(phase1_state, f, indent=2)
+        manifest_path = (OUTPUT_DIR / "audio" / "phase2" / project_id / "timing_manifest.json").resolve()
+
+        # Phase 1: Story
+        if 1 in phase_plan:
+            await log_to_stream(project_id, 1, "running", "Generating Story Script...")
+            phase1_state = generate_phase1_state(prompt)
+            # Ensure project_id is in metadata
+            if "meta" not in phase1_state: phase1_state["meta"] = {}
+            phase1_state["meta"]["project_id"] = project_id
             
-        await event_queues[project_id].put({
-            "phase": 1, 
-            "status": "completed", 
-            "log": f"Script saved: {p1_path.name}",
-            "project_state": phase1_state
-        })
+            with open(p1_path, "w") as f:
+                json.dump(phase1_state, f, indent=2)
+                
+            await event_queues[project_id].put({
+                "phase": 1, 
+                "status": "completed", 
+                "log": f"Script saved: {p1_path.name}",
+                "project_state": phase1_state
+            })
 
         # Phase 2: Audio
-        await log_to_stream(project_id, 2, "running", "Generating Audio & BGM...")
-        phase2_result = run_phase2_on_file(str(p1_path))
-        
-        # Resolve the project-specific manifest with an absolute path
-        manifest_path = (OUTPUT_DIR / "audio" / "phase2" / project_id / "timing_manifest.json").resolve()
-        
-        await log_to_stream(project_id, 2, "completed", "Audio assets generated successfully.")
+        if 2 in phase_plan:
+            await log_to_stream(project_id, 2, "running", "Generating Audio & BGM...")
+            run_phase2_on_file(str(p1_path))
+            await log_to_stream(project_id, 2, "completed", "Audio assets generated successfully.")
 
         # Phase 3: Video
-        await log_to_stream(project_id, 3, "running", "Initializing Video Engine...")
-        video_config = {
-            "phase1_state_file": str(p1_path),
-            "timing_manifest_file": str(manifest_path),
-            "project_id": project_id,
-            "data_dir": str(OUTPUT_DIR.resolve()),
-            "subtitles": True
-        }
-        
-        agent = VideoAgent(video_config)
-        await asyncio.to_thread(agent.run)
-        
-        await log_to_stream(project_id, 3, "completed", "Video composition finished.", progress=100)
+        if 3 in phase_plan:
+            await log_to_stream(project_id, 3, "running", "Initializing Video Engine...")
+            video_config = {
+                "phase1_state_file": str(p1_path),
+                "timing_manifest_file": str(manifest_path),
+                "project_id": project_id,
+                "data_dir": str(OUTPUT_DIR.resolve()),
+                "subtitles": True
+            }
+            
+            agent = VideoAgent(video_config)
+            await asyncio.to_thread(agent.run)
+            
+            await log_to_stream(project_id, 3, "completed", "Video composition finished.", progress=100)
         
         # Small buffer for UI sync
         await asyncio.sleep(0.5)
@@ -231,11 +304,12 @@ async def run_rerun_pipeline(project_id: str, start_phase: int, params: Optional
     logging.getLogger().addHandler(handler)
     
     try:
+        phase_plan = _resolve_phase_plan(start_phase=start_phase)
         p1_path = (OUTPUT_DIR / f"phase1_state_{project_id}.json").resolve()
         manifest_path = (OUTPUT_DIR / "audio" / "phase2" / project_id / "timing_manifest.json").resolve()
 
         # Phase 1: Story (only if start_phase <= 1)
-        if start_phase <= 1:
+        if 1 in phase_plan:
             await log_to_stream(project_id, 1, "running", "Regenerating Story Script...")
             # We need the original prompt. If not in project_states, we might need to find it.
             prompt = project_states.get(project_id, {}).get("prompt", "Continued story")
@@ -252,13 +326,13 @@ async def run_rerun_pipeline(project_id: str, start_phase: int, params: Optional
                 phase1_state = json.load(f)
 
         # Phase 2: Audio (only if start_phase <= 2)
-        if start_phase <= 2:
+        if 2 in phase_plan:
             await log_to_stream(project_id, 2, "running", "Regenerating Audio & BGM...")
             run_phase2_on_file(str(p1_path))
             await log_to_stream(project_id, 2, "completed", "Audio assets regenerated.")
 
         # Phase 3: Video (always if start_phase <= 3)
-        if start_phase <= 3:
+        if 3 in phase_plan:
             await log_to_stream(project_id, 3, "running", "Re-initializing Video Engine...")
             video_config = {
                 "phase1_state_file": str(p1_path),
